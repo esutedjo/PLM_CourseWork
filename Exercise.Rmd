@@ -1,0 +1,110 @@
+---
+output: html_document
+---
+## Coursework Practical Machine Learning
+## by Edwin Sutedjo
+
+
+```{r reading data, echo=FALSE}
+train <- read.csv("pml-training.csv")
+test <- read.csv("pml-testing.csv")
+```
+
+### Data Preparation
+Testing data set was checked for features (columns), which are empty or contain NA. Those columns are removed for both the training and testing data set, based on the assumption that, if we don't have it as a predictor, these features are not usable.  
+  
+Furthermore, columns which contain counters or timestamps, have been removed. Time of the day could have an impact on how well the barbell exercise was done, but for simplification, assuming here as not relevant.  
+  
+Training data set ended up to be with 52 features and 19622 data points.
+'classe' being the predicted value.  
+  
+Since the random forest model with cross-validation (k-fold = 6) is taking a lot of time, it was decided to use only a subset/partition of the training data set (30%) to build the prediction model.  
+
+```{r tidy data, echo=FALSE}
+# Removing NAs in the test data set in a new dataframe
+test.clean <- test[,colSums(is.na(test)) == 0]
+
+# Removing first five columns (just a row counter and timestamps)
+test.clean <- test.clean[,-(1:7)]
+
+# Cleaning up training dataset based on the values from test dataset
+c.names <- names(test.clean)
+c.names <- c.names[-53]
+train.clean <- train[,names(train) %in% c(c.names, "classe")]
+
+# Create a smaller dataset
+library(caret)
+set.seed(355)
+InTrain<-createDataPartition(y=train.clean$classe,p=0.3,list=FALSE)
+train.clean.s<-train.clean[InTrain,]
+train.clean.cm <- train.clean[-InTrain,]
+```
+
+
+### Model Training
+
+Method used is random forest using the caret library.  
+- Data source: cleaned-up training data set and partitioned (30% of data points)  
+- classe has been explicitly defined as a factor.  
+- Cross validation with K=6 has been used.  
+- Proximity set to true  
+
+```{r training model, echo=FALSE}
+fit <- train(as.factor(classe) ~ ., data = train.clean.s, method ="rf", prox=TRUE,
+             trControl=trainControl(method="cv",number=6)
+             )
+```
+
+Model results are as follows.  
+
+```{r model output, echo=FALSE}
+fit
+fm <- fit$finalModel
+varImp(fm)
+```
+
+with mtry = 27  
+Accuracy is 97.7%  (with cross validation, K = 6)
+Kappa is 97.1%  
+
+Top 5 predictors in this model are:  
+- roll_belt  
+- pitch_forearm  
+- yaw_belt  
+- magnet_dumbbell_z  
+- magnet_dumbbell_y  
+
+
+### Predictions
+
+Prediction results using the remaining training data set (70%), shown as a confusion matrix  
+```{r confusion matrix}
+pred1 <- predict(fit, train.clean.cm)
+confusionMatrix(pred1,train.clean.cm$classe)
+
+```
+Accuracy is 98.1% (without cross validation)  
+  
+  
+Prediction results using the test data set (as asked in the course project)
+```{r predict cases, echo=FALSE}
+pred <- predict(fit, test.clean)
+pred
+
+```
+
+```{r create files, echo=FALSE}
+
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+
+answers <- as.character(pred)
+pml_write_files(answers)
+
+```
+
